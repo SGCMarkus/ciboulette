@@ -16,7 +16,7 @@ from astropy import wcs
 from astropy.io.votable import parse_single_table
 from astropy.utils.data import get_pkg_data_filename
 from astroquery.simbad import Simbad
-from alpaca.camera import Camera
+from alpaca.camera import *
 from alpaca.filterwheel import FilterWheel
 from alpaca.telescope import Telescope
 from ciboulette.base import constant
@@ -523,30 +523,46 @@ class Ciboulette(object):
             self._date = t.value
             camera.BinX = self.binXY
             camera.BinY = self.binXY
+            camera.StartX = 0
+            camera.StartY = 0
+
+            camera.NumX = camera.CameraXSize // camera.BinX
+            camera.NumY = camera.CameraYSize // camera.BinY
+
             camera.StartExposure(self._exp_time,True)
-            i = self._exp_time + (((self.naxis1 * self.naxis2)/1048576) *2)
-            while i > 0:
-                time.sleep(1)
-                i = i - 1
-                 
+            while not camera.ImageReady:
+                time.sleep(0.5)
+
             self.binXY = camera.BinX
             self.pixelXY = camera.PixelSizeX
-            
+
             """
             Not implemented in all drivers : lastexposurestarttime()
             """
             #self._date = camera.lastexposurestarttime()
-            
+
             if camera.CanSetCCDTemperature:
                 self._temperature = camera.CCDTemperature
             # Translate picture
             data_ccd = camera.ImageArray
-            data_new = np.rot90(data_ccd)
-            data_int16 = data_new.astype(np.int16)       
+
+            imginfo = camera.ImageArrayInfo
+            if imginfo.ImageElementType == ImageArrayElementTypes.Int32:
+                if camera.MaxADU <= 65535:
+                    imgDataType = np.uint16 # Required for BZERO & BSCALE to be written
+                else:
+                    imgDataType = np.int32
+            elif imginfo.ImageElementType == ImageArrayElementTypes.Double:
+                imgDataType = np.float64
+
+            if imginfo.Rank == 2:
+                nda = np.array(data_ccd, dtype=imgDataType).transpose()
+            else:
+                nda = np.array(data_ccd, dtype=imgDataType).transpose(2,1,0)
             #Vertical inversion if necessary
             #data_real = np.fliplr(data_int16)
             #Create simple fits
-            hdu = fits.PrimaryHDU(data=data_int16)
+            hdu = fits.PrimaryHDU(data=nda)
             file_name = self.dataset+'/_'+self.observer_name+'_'+self.object_name+'_'+str(self._frameid)+'.fits'
             fits.writeto(file_name, hdu.data, hdu.header, overwrite=True)  
         else:
