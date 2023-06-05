@@ -371,14 +371,13 @@ class Mast(object):
                   's': spectrum
                   'a': archive (default)
         """
-        match string:
-            case 'S':
+        if string == 'S':
                 itype = 'science'
-            case 'A':
+        elif string == 'A':
                 itype = 'analysis'
-            case 's':
+        elif string ==  's':
                 itype = 'spectrum'
-            case _:
+        else:
                 itype = 'archive'
         return itype
         
