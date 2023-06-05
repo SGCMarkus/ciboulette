@@ -16,6 +16,9 @@ from astropy import wcs
 from astropy.io.votable import parse_single_table
 from astropy.utils.data import get_pkg_data_filename
 from astroquery.simbad import Simbad
+from alpaca.camera import Camera
+from alpaca.filterwheel import FilterWheel
+from alpaca.telescope import Telescope
 from ciboulette.base import constant
 from ciboulette.sector import projection
 from ciboulette.sector import maps
@@ -278,11 +281,14 @@ class Ciboulette(object):
     def filterwheel(self,filterwheel):
         """
         Set filter of filterweel
-         filterwheel (Filterwheel): Filterwheel object Indilib.
+         filterwheel (Filterwheel): Filterwheel object (Alpaca or Indilib).
          filter_name (str): Filter name.           
         """       
-        filter_number = 0  
-        filter_names = filterwheel.names
+        filter_number = 0
+        if isinstance(filterwheel, FilterWheel):
+            filter_names = filterwheel.names()
+        else:
+            filter_names = filterwheel.names
         if self.filter_name in filter_names:
             filter_number = filter_names.index(self.filter_name)
             filterwheel.position(filter_number)
@@ -347,22 +353,29 @@ class Ciboulette(object):
     def slewtocoordinates(self,telescope):
         """
         Slew RA and DEC to telescope 
-         telescope (Telescope): Telescope object Indilib.
+         telescope (Telescope): Telescope object (Alpaca or Indilib).
          ra (float): Hours.
          dec (float): Degrees           
         """
         telescope.slewtocoordinates(self.ra,self.dec)
+        if isinstance(telescope, Telescope):
+            while telescope.slewing():
+                time.sleep(1)
 
     
     def synctocoordinates(self,telescope):
         """
         Synchronize the telescope with RA and DEC
-         telescope (Telescope): Telescope object  Indilib.
+         telescope (Telescope): Telescope object (Alpaca or Indilib).
          ra (float): Hours.
          dec (float): Degrees           
         """
-        telescope.unpark
-        telescope.tracking
+        if isinstance(telescope, Telescope):
+            telescope.unpark()
+            telescope.tracking()
+        else :
+            telescope.unpark
+            telescope.tracking
         telescope.synctocoordinates(self.ra,self.dec)
 
     @property    
@@ -501,33 +514,33 @@ class Ciboulette(object):
     def camera(self,camera):
         """
         Get CCD and write fits file 
-         camera (object): Camera indilib object.
+         camera (object): Camera alpaca or indilib object.
         """
         t = Time( Time.now(), format='fits', scale='utc', out_subfmt='date_hms')
         self._date = t.value
         if isinstance(camera, Camera):
             t = Time( Time.now(), format='fits', scale='utc', out_subfmt='date_hms')
             self._date = t.value
-            camera.binx(self.binXY)
-            camera.biny(self.binXY)
-            camera.startexposure(self._exp_time,True)
+            camera.BinX = self.binXY
+            camera.BinY = self.binXY
+            camera.StartExposure(self._exp_time,True)
             i = self._exp_time + (((self.naxis1 * self.naxis2)/1048576) *2)
             while i > 0:
                 time.sleep(1)
                 i = i - 1
                  
-            self.binXY = camera.binx()
-            self.pixelXY = camera.pixelsizex()
+            self.binXY = camera.BinX
+            self.pixelXY = camera.PixelSizeX
             
             """
             Not implemented in all drivers : lastexposurestarttime()
             """
             #self._date = camera.lastexposurestarttime()
             
-            if camera.cansetccdtemperature():
-                self._temperature = camera.ccdtemperature()
+            if camera.CanSetCCDTemperature:
+                self._temperature = camera.CCDTemperature
             # Translate picture
-            data_ccd = camera.imagearray()
+            data_ccd = camera.ImageArray
             data_new = np.rot90(data_ccd)
             data_int16 = data_new.astype(np.int16)       
             #Vertical inversion if necessary
